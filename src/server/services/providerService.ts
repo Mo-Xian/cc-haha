@@ -733,10 +733,10 @@ export class ProviderService {
       let transformedBody: unknown
       if (format === 'openai_chat') {
         transformedBody = anthropicToOpenaiChat(anthropicReq)
-        upstreamUrl = `${base}/v1/chat/completions`
+        upstreamUrl = resolveUpstreamUrl(base, '/chat/completions')
       } else {
         transformedBody = anthropicToOpenaiResponses(anthropicReq)
-        upstreamUrl = `${base}/v1/responses`
+        upstreamUrl = resolveUpstreamUrl(base, '/responses')
       }
       const proxyOptions = getNetworkProxyFetchOptions(networkSettings, upstreamUrl)
 
@@ -794,14 +794,14 @@ function buildDirectTestRequest(
 
   if (format === 'openai_chat') {
     return {
-      url: `${base}/v1/chat/completions`,
+      url: resolveUpstreamUrl(base, '/chat/completions'),
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: { model: modelId, max_tokens: 16, stream: false, messages: [{ role: 'user', content: prompt }] },
     }
   }
   if (format === 'openai_responses') {
     return {
-      url: `${base}/v1/responses`,
+      url: resolveUpstreamUrl(base, '/responses'),
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: { model: modelId, max_output_tokens: 16, input: [{ type: 'message', role: 'user', content: prompt }] },
     }
@@ -816,6 +816,16 @@ function buildDirectTestRequest(
     },
     body: { model: modelId, max_tokens: 16, messages: [{ role: 'user', content: prompt }] },
   }
+}
+
+/**
+ * Resolve the concrete upstream endpoint for a provider's base URL. Mirrors the
+ * proxy handler: a base URL that already ends with the requested endpoint (a
+ * flat-mount gateway) is used verbatim, otherwise the /v1 prefix is appended.
+ */
+function resolveUpstreamUrl(baseUrl: string, endpoint: '/chat/completions' | '/responses'): string {
+  if (baseUrl.endsWith(endpoint)) return baseUrl
+  return `${baseUrl}/v1${endpoint}`
 }
 
 function buildAnthropicAuthHeaders(apiKey: string, authStrategy: ProviderAuthStrategy): Record<string, string> {

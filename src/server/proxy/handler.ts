@@ -46,6 +46,20 @@ type ProxyTraceContext = {
 
 const TRACE_RECORDED_ERROR_MARKER = Symbol('cc-haha-trace-recorded-error')
 
+/**
+ * Resolve the concrete upstream endpoint for a provider's base URL.
+ *
+ * Most providers give a bare root (https://host/v1) and expect the mounted
+ * /v1/… path to be appended. Some flat-mount gateways instead expose a fully
+ * qualified endpoint out of the box (https://host/openai/chat/completions),
+ * where appending /v1 would produce a 404. Detect the latter by the trailing
+ * endpoint suffix and use such URLs verbatim.
+ */
+function resolveUpstreamUrl(baseUrl: string, endpoint: '/chat/completions' | '/responses'): string {
+  if (baseUrl.endsWith(endpoint)) return baseUrl
+  return `${baseUrl}/v1${endpoint}`
+}
+
 function markTraceErrorRecorded(error: unknown): void {
   if (error && typeof error === 'object') {
     try {
@@ -272,7 +286,10 @@ async function handleOpenaiChat(
     passThinkingToggle: deepSeekCompatible,
     imageContentMode: shouldUseTextOnlyOpenAIChatContent(baseUrl) ? 'text_only' : 'vision',
   })
-  const url = `${baseUrl}/v1/chat/completions`
+  // If the configured base URL already points at the concrete chat endpoint
+  // (e.g. https://host/openai/chat/completions on a flat-mount gateway), use it
+  // as-is instead of appending a /v1 prefix that does not exist on that host.
+  const url = resolveUpstreamUrl(baseUrl, '/chat/completions')
   const upstreamRequestHeaders = {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${apiKey}`,
@@ -441,7 +458,7 @@ async function handleOpenaiResponses(
   promptCacheKey?: string,
 ): Promise<Response> {
   const transformed = anthropicToOpenaiResponses(body, { cacheKey: promptCacheKey })
-  const url = `${baseUrl}/v1/responses`
+  const url = resolveUpstreamUrl(baseUrl, '/responses')
   const upstreamRequestHeaders = {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${apiKey}`,
