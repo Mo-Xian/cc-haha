@@ -73,6 +73,12 @@ export const ImageGenerationConfigSchema = z.object({
   apiKey: z.string().trim().optional(),
 })
 
+export const ImageReadConfigSchema = z.object({
+  model: z.string().trim().min(1),
+  baseUrl: z.string().trim().optional(),
+  apiKey: z.string().trim().optional(),
+})
+
 export const SavedProviderSchema = z.object({
   id: z.string(),
   presetId: z.string(),
@@ -89,6 +95,7 @@ export const SavedProviderSchema = z.object({
   toolSearchEnabled: ToolSearchEnabledSchema.optional(),
   disableExperimentalBetas: DisableExperimentalBetasSchema.optional(),
   imageGeneration: ImageGenerationConfigSchema.optional(),
+  imageRead: ImageReadConfigSchema.optional(),
   notes: z.string().optional(),
 })
 
@@ -114,6 +121,7 @@ export const CreateProviderSchema = z.object({
   toolSearchEnabled: ToolSearchEnabledSchema.optional(),
   disableExperimentalBetas: DisableExperimentalBetasSchema.optional(),
   imageGeneration: ImageGenerationConfigSchema.optional(),
+  imageRead: ImageReadConfigSchema.optional(),
   notes: z.string().optional(),
 })
 
@@ -131,6 +139,7 @@ export const UpdateProviderSchema = z.object({
   toolSearchEnabled: ToolSearchEnabledSchema.optional(),
   disableExperimentalBetas: DisableExperimentalBetasSchema.optional(),
   imageGeneration: ImageGenerationConfigSchema.nullable().optional(),
+  imageRead: ImageReadConfigSchema.nullable().optional(),
   notes: z.string().optional(),
 })
 
@@ -152,6 +161,7 @@ export const ReorderProvidersSchema = z.object({
 export type ModelMapping = z.infer<typeof ModelMappingSchema>
 export type Model1mSupport = z.infer<typeof Model1mSupportSchema>
 export type ImageGenerationConfig = z.infer<typeof ImageGenerationConfigSchema>
+export type ImageReadConfig = z.infer<typeof ImageReadConfigSchema>
 export type SavedProvider = z.infer<typeof SavedProviderSchema>
 export type ProvidersIndex = z.infer<typeof ProvidersIndexSchema>
 export type CreateProviderInput = z.infer<typeof CreateProviderSchema>

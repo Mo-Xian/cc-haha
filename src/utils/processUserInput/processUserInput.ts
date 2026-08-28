@@ -8,6 +8,7 @@ import { randomUUID } from 'crypto'
 import type { QuerySource } from 'src/constants/querySource.js'
 import { logEvent } from 'src/services/analytics/index.js'
 import { getContentText } from 'src/utils/messages.js'
+import { replaceImageBlocksWithText } from 'src/utils/imageRecognition.js'
 import {
   findCommand,
   getCommandName,
@@ -574,10 +575,18 @@ async function processUserInputBase(
   }
 
   // Regular user prompt
+  // If image recognition is configured (IMAGE_READ_*), rewrite pasted image
+  // blocks into textual descriptions so a non-visual main model (e.g.
+  // DeepSeek) can understand the images. Falls back to the original image
+  // blocks when not configured.
+  const recognitionBlocks =
+    imageContentBlocks.length > 0
+      ? await replaceImageBlocksWithText(imageContentBlocks)
+      : imageContentBlocks
   return addImageMetadataMessage(
     processTextPrompt(
       normalizedInput,
-      imageContentBlocks,
+      recognitionBlocks,
       imagePasteIds,
       attachmentMessages,
       uuid,

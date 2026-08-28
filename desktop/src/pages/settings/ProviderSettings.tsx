@@ -28,6 +28,7 @@ import { GrokOfficialLogin } from '../../components/settings/GrokOfficialLogin'
 import { CcSwitchImportModal } from '../../components/settings/CcSwitchImportModal'
 import { ModelIdCombobox } from '../../components/settings/ModelIdCombobox'
 import { ProviderImageGenerationFields, type ImageGenerationFormValue } from '../../components/settings/ProviderImageGenerationFields'
+import { ProviderImageReadFields, type ImageReadFormValue } from '../../components/settings/ProviderImageReadFields'
 import { BUILT_IN_PROVIDER_IDS, CLAUDE_OFFICIAL_PROVIDER_ID, OPENAI_OFFICIAL_PROVIDER_ID } from '../../constants/openaiOfficialProvider'
 import { GROK_OFFICIAL_PROVIDER_ID } from '../../constants/grokOfficialProvider'
 import { getBaseUrl } from '../../api/client'
@@ -1017,6 +1018,12 @@ function ProviderFormModal({ open, onClose, mode, provider, presets }: ProviderF
     baseUrl: provider?.imageGeneration?.baseUrl ?? '',
     apiKey: provider?.imageGeneration?.apiKey ?? '',
   })
+  const [imageRead, setImageRead] = useState<ImageReadFormValue>({
+    enabled: Boolean(provider?.imageRead),
+    model: provider?.imageRead?.model ?? '',
+    baseUrl: provider?.imageRead?.baseUrl ?? '',
+    apiKey: provider?.imageRead?.apiKey ?? '',
+  })
   const [showContextSettings, setShowContextSettings] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [testResult, setTestResult] = useState<ProviderTestResult | null>(null)
@@ -1429,6 +1436,13 @@ function ProviderFormModal({ open, onClose, mode, provider, presets }: ProviderF
           ...(imageGeneration.apiKey.trim() ? { apiKey: imageGeneration.apiKey.trim() } : {}),
         }
       : undefined
+    const storedImageRead = imageRead.enabled
+      ? {
+          model: imageRead.model.trim(),
+          ...(imageRead.baseUrl.trim() ? { baseUrl: imageRead.baseUrl.trim() } : {}),
+          ...(imageRead.apiKey.trim() ? { apiKey: imageRead.apiKey.trim() } : {}),
+        }
+      : undefined
     setIsSubmitting(true)
     try {
       // Write the edited cc-haha settings.json first so provider-specific model
@@ -1458,6 +1472,7 @@ function ProviderFormModal({ open, onClose, mode, provider, presets }: ProviderF
           toolSearchEnabled,
           ...(disableExperimentalBetas && { disableExperimentalBetas }),
           ...(storedImageGeneration !== undefined && { imageGeneration: storedImageGeneration }),
+          ...(storedImageRead !== undefined && { imageRead: storedImageRead }),
           notes: notes.trim() || undefined,
         })
       } else if (provider) {
@@ -1475,6 +1490,7 @@ function ProviderFormModal({ open, onClose, mode, provider, presets }: ProviderF
           toolSearchEnabled,
           disableExperimentalBetas,
           imageGeneration: storedImageGeneration ?? null,
+          imageRead: storedImageRead ?? null,
           notes: notes.trim() || undefined,
         }
         if (apiKey.trim()) input.apiKey = apiKey.trim()
@@ -1757,6 +1773,11 @@ function ProviderFormModal({ open, onClose, mode, provider, presets }: ProviderF
         <ProviderImageGenerationFields
           value={imageGeneration}
           onChange={setImageGeneration}
+        />
+
+        <ProviderImageReadFields
+          value={imageRead}
+          onChange={setImageRead}
         />
 
         {/* Model Mapping */}

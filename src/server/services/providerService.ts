@@ -39,6 +39,7 @@ import {
   getPresetAuthStrategy,
   getPresetDefaultEnv,
   normalizeImageGeneration,
+  normalizeImageRead,
   normalizeModelMapping,
   normalizeProvidersIndex,
 } from './providerRuntimeEnv.js'
@@ -110,6 +111,7 @@ function mergeSavedOrderIntoDisplayOrder(providerOrder: string[], savedOrder: st
 
 function buildSavedProvider(input: CreateProviderInput): SavedProvider {
   const imageGeneration = normalizeImageGeneration(input.imageGeneration)
+  const imageRead = normalizeImageRead(input.imageRead)
   return {
     id: crypto.randomUUID(),
     presetId: input.presetId,
@@ -126,6 +128,7 @@ function buildSavedProvider(input: CreateProviderInput): SavedProvider {
     toolSearchEnabled: input.toolSearchEnabled ?? false,
     ...(input.disableExperimentalBetas === true && { disableExperimentalBetas: true }),
     ...(imageGeneration !== undefined && { imageGeneration }),
+    ...(imageRead !== undefined && { imageRead }),
     ...(input.notes !== undefined && { notes: input.notes }),
   }
 }
@@ -285,6 +288,9 @@ export class ProviderService {
     const imageGeneration = input.imageGeneration
       ? normalizeImageGeneration(input.imageGeneration)
       : input.imageGeneration
+    const imageRead = input.imageRead
+      ? normalizeImageRead(input.imageRead)
+      : input.imageRead
     const updated: SavedProvider = {
       ...existing,
       ...(input.name !== undefined && { name: input.name }),
@@ -300,6 +306,7 @@ export class ProviderService {
       ...(input.toolSearchEnabled !== undefined && { toolSearchEnabled: input.toolSearchEnabled }),
       ...(input.disableExperimentalBetas === true && { disableExperimentalBetas: true }),
       ...(imageGeneration !== undefined && imageGeneration !== null && { imageGeneration }),
+      ...(imageRead !== undefined && imageRead !== null && { imageRead }),
       ...(input.notes !== undefined && { notes: input.notes }),
     }
     if (input.model1mSupport === null) {
@@ -316,6 +323,9 @@ export class ProviderService {
     }
     if (imageGeneration === null) {
       delete updated.imageGeneration
+    }
+    if (imageRead === null) {
+      delete updated.imageRead
     }
 
     index.providers[idx] = updated

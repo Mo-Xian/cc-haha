@@ -10,6 +10,12 @@ import {
   IMAGE_GENERATION_PROVIDER_ID_ENV_KEY,
   IMAGE_GENERATION_PROVIDER_KIND_ENV_KEY,
 } from '../../services/imageGeneration/config.js'
+import {
+  IMAGE_READ_API_KEY_ENV_KEY,
+  IMAGE_READ_BASE_URL_ENV_KEY,
+  IMAGE_READ_MODEL_ENV_KEY,
+  IMAGE_READ_PROVIDER_ID_ENV_KEY,
+} from '../../services/imageRead/config.js'
 import { PROVIDER_PRESETS } from '../config/providerPresets.js'
 import type {
   ApiFormat,
@@ -67,6 +73,10 @@ export const MANAGED_PROVIDER_ENV_KEYS = [
   IMAGE_GENERATION_BASE_URL_ENV_KEY,
   IMAGE_GENERATION_API_KEY_ENV_KEY,
   IMAGE_GENERATION_MODEL_ENV_KEY,
+  IMAGE_READ_PROVIDER_ID_ENV_KEY,
+  IMAGE_READ_BASE_URL_ENV_KEY,
+  IMAGE_READ_API_KEY_ENV_KEY,
+  IMAGE_READ_MODEL_ENV_KEY,
 ] as const
 
 const AUTH_ENV_KEYS = new Set(['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN'])
@@ -105,6 +115,17 @@ function isImageGenerationConfig(
   )
 }
 
+function isImageReadConfig(
+  value: unknown,
+): value is NonNullable<SavedProvider['imageRead']> {
+  return (
+    isRecord(value) &&
+    typeof value.model === 'string' &&
+    (value.baseUrl === undefined || typeof value.baseUrl === 'string') &&
+    (value.apiKey === undefined || typeof value.apiKey === 'string')
+  )
+}
+
 function isSavedProvider(value: unknown): value is SavedProvider {
   if (!isRecord(value)) return false
   const runtimeKind = value.runtimeKind
@@ -122,7 +143,8 @@ function isSavedProvider(value: unknown): value is SavedProvider {
     ) &&
     isProviderModels(value.models) &&
     (value.model1mSupport === undefined || isProviderModel1mSupport(value.model1mSupport)) &&
-    (value.imageGeneration === undefined || isImageGenerationConfig(value.imageGeneration))
+    (value.imageGeneration === undefined || isImageGenerationConfig(value.imageGeneration)) &&
+    (value.imageRead === undefined || isImageReadConfig(value.imageRead))
   )
 }
 
@@ -188,6 +210,20 @@ export function normalizeImageGeneration(
   }
 }
 
+export function normalizeImageRead(
+  value: SavedProvider['imageRead'] | undefined,
+): SavedProvider['imageRead'] | undefined {
+  const model = value?.model.trim()
+  if (!model) return undefined
+  const baseUrl = value?.baseUrl?.trim()
+  const apiKey = value?.apiKey?.trim()
+  return {
+    model,
+    ...(baseUrl ? { baseUrl } : {}),
+    ...(apiKey ? { apiKey } : {}),
+  }
+}
+
 function applyModel1mSupport(model: string, enabled: boolean | undefined): string {
   const trimmed = model.trim()
   if (!enabled) return trimmed
@@ -211,12 +247,14 @@ export function normalizeSavedProvider(provider: SavedProvider): SavedProvider {
   const {
     disableExperimentalBetas: rawDisableExperimentalBetas,
     imageGeneration: rawImageGeneration,
+    imageRead: rawImageRead,
     model1mSupport: rawModel1mSupport,
     ...rest
   } = provider
   const rawProvider = provider as SavedProvider & Record<string, unknown>
   const model1mSupport = normalizeModel1mSupport(rawModel1mSupport)
   const imageGeneration = normalizeImageGeneration(rawImageGeneration)
+  const imageRead = normalizeImageRead(rawImageRead)
   return {
     ...rest,
     apiFormat: provider.apiFormat ?? 'anthropic',
@@ -226,6 +264,7 @@ export function normalizeSavedProvider(provider: SavedProvider): SavedProvider {
     ...(normalizeDisableExperimentalBetas(rawDisableExperimentalBetas) ? { disableExperimentalBetas: true } : {}),
     ...(model1mSupport !== undefined ? { model1mSupport } : {}),
     ...(imageGeneration !== undefined ? { imageGeneration } : {}),
+    ...(imageRead !== undefined ? { imageRead } : {}),
   }
 }
 
@@ -241,6 +280,20 @@ function buildImageGenerationManagedEnv(
     [IMAGE_GENERATION_BASE_URL_ENV_KEY]: imageGeneration.baseUrl ?? provider.baseUrl,
     [IMAGE_GENERATION_API_KEY_ENV_KEY]: imageGeneration.apiKey ?? provider.apiKey,
     [IMAGE_GENERATION_MODEL_ENV_KEY]: imageGeneration.model,
+  }
+}
+
+function buildImageReadManagedEnv(
+  provider: SavedProvider,
+): Record<string, string> {
+  const imageRead = normalizeImageRead(provider.imageRead)
+  if (!imageRead) return {}
+
+  return {
+    [IMAGE_READ_PROVIDER_ID_ENV_KEY]: provider.id,
+    [IMAGE_READ_BASE_URL_ENV_KEY]: imageRead.baseUrl ?? provider.baseUrl,
+    [IMAGE_READ_API_KEY_ENV_KEY]: imageRead.apiKey ?? provider.apiKey,
+    [IMAGE_READ_MODEL_ENV_KEY]: imageRead.model,
   }
 }
 
@@ -450,6 +503,7 @@ export function buildProviderManagedEnv(
     ANTHROPIC_DEFAULT_OPUS_MODEL: runtimeModels.opus,
     ...attributionHeaderEnvForModel(runtimeModels.main),
     ...buildImageGenerationManagedEnv(provider),
+    ...buildImageReadManagedEnv(provider),
   }
 }
 

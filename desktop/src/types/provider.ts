@@ -34,6 +34,12 @@ export type ImageGenerationConfig = {
   apiKey?: string
 }
 
+export type ImageReadConfig = {
+  model: string
+  baseUrl?: string
+  apiKey?: string
+}
+
 export type SavedProvider = {
   id: string
   presetId: string
@@ -50,6 +56,7 @@ export type SavedProvider = {
   toolSearchEnabled?: boolean
   disableExperimentalBetas?: boolean
   imageGeneration?: ImageGenerationConfig
+  imageRead?: ImageReadConfig
   notes?: string
 }
 
@@ -68,6 +75,7 @@ export type CreateProviderInput = {
   toolSearchEnabled?: boolean
   disableExperimentalBetas?: boolean
   imageGeneration?: ImageGenerationConfig
+  imageRead?: ImageReadConfig
   notes?: string
 }
 
@@ -85,6 +93,7 @@ export type UpdateProviderInput = {
   toolSearchEnabled?: boolean
   disableExperimentalBetas?: boolean
   imageGeneration?: ImageGenerationConfig | null
+  imageRead?: ImageReadConfig | null
   notes?: string
 }
 

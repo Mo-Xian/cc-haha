@@ -434,6 +434,26 @@ describe('ProviderService', () => {
       expect((config.providers as Array<{ imageGeneration?: unknown }>)[0]?.imageGeneration)
         .toEqual(provider.imageGeneration)
     })
+
+    test('should persist an optional provider image-read (vision) config', async () => {
+      const svc = new ProviderService()
+      const provider = await svc.addProvider(sampleInput({
+        imageRead: {
+          model: 'qwen3-vl-30b-a3b-thinking',
+          baseUrl: 'https://vision.example.test/v1',
+          apiKey: 'vision-secret',
+        },
+      }))
+
+      expect(provider.imageRead).toEqual({
+        model: 'qwen3-vl-30b-a3b-thinking',
+        baseUrl: 'https://vision.example.test/v1',
+        apiKey: 'vision-secret',
+      })
+      const config = await readProvidersConfig()
+      expect((config.providers as Array<{ imageRead?: unknown }>)[0]?.imageRead)
+        .toEqual(provider.imageRead)
+    })
   })
 
   // ─── getProvider ─────────────────────────────────────────────────────────

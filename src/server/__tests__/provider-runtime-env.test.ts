@@ -106,6 +106,70 @@ describe('providerRuntimeEnv', () => {
     })
   })
 
+  test('projects a provider image-read config into CC_HAHA_IMAGE_READ_* runtime env', async () => {
+    await writeJson(path.join(tmpDir, 'cc-haha', 'providers.json'), {
+      activeId: 'provider-vision',
+      providers: [{
+        id: 'provider-vision',
+        presetId: 'custom',
+        name: 'Vision',
+        apiKey: 'chat-secret',
+        baseUrl: 'https://chat.example.test',
+        apiFormat: 'anthropic',
+        models: {
+          main: 'chat-model',
+          haiku: 'chat-model',
+          sonnet: 'chat-model',
+          opus: 'chat-model',
+        },
+        imageRead: {
+          model: '  qwen3-vl-30b-a3b-thinking  ',
+          baseUrl: '  https://vision.example.test/v1  ',
+          apiKey: '  vision-secret  ',
+        },
+      }],
+    })
+
+    const env = readActiveProviderManagedEnv(tmpDir)
+    expect(env).toMatchObject({
+      CC_HAHA_IMAGE_READ_PROVIDER_ID: 'provider-vision',
+      CC_HAHA_IMAGE_READ_BASE_URL: 'https://vision.example.test/v1',
+      CC_HAHA_IMAGE_READ_API_KEY: 'vision-secret',
+      CC_HAHA_IMAGE_READ_MODEL: 'qwen3-vl-30b-a3b-thinking',
+    })
+  })
+
+  test('falls back image-read base URL and API key to the chat provider', async () => {
+    await writeJson(path.join(tmpDir, 'cc-haha', 'providers.json'), {
+      activeId: 'provider-vision',
+      providers: [{
+        id: 'provider-vision',
+        presetId: 'custom',
+        name: 'Vision',
+        apiKey: 'chat-secret',
+        baseUrl: 'https://chat.example.test',
+        apiFormat: 'anthropic',
+        models: {
+          main: 'chat-model',
+          haiku: 'chat-model',
+          sonnet: 'chat-model',
+          opus: 'chat-model',
+        },
+        imageRead: {
+          model: 'qwen3-vl-30b-a3b-thinking',
+        },
+      }],
+    })
+
+    const env = readActiveProviderManagedEnv(tmpDir)
+    expect(env).toMatchObject({
+      CC_HAHA_IMAGE_READ_PROVIDER_ID: 'provider-vision',
+      CC_HAHA_IMAGE_READ_BASE_URL: 'https://chat.example.test',
+      CC_HAHA_IMAGE_READ_API_KEY: 'chat-secret',
+      CC_HAHA_IMAGE_READ_MODEL: 'qwen3-vl-30b-a3b-thinking',
+    })
+  })
+
   test('clears stale image routing when the next active provider has no image capability', async () => {
     await writeJson(path.join(tmpDir, 'cc-haha', 'providers.json'), {
       activeId: 'provider-chat-only',
@@ -131,6 +195,10 @@ describe('providerRuntimeEnv', () => {
       CC_HAHA_IMAGE_BASE_URL: 'https://stale.example.test/v1',
       CC_HAHA_IMAGE_API_KEY: 'stale-secret',
       CC_HAHA_IMAGE_MODEL: 'stale-model',
+      CC_HAHA_IMAGE_READ_PROVIDER_ID: 'stale-vision',
+      CC_HAHA_IMAGE_READ_BASE_URL: 'https://stale-vision.example.test/v1',
+      CC_HAHA_IMAGE_READ_API_KEY: 'stale-vision-secret',
+      CC_HAHA_IMAGE_READ_MODEL: 'stale-vision-model',
     }, tmpDir)
 
     expect(env.CC_HAHA_IMAGE_PROVIDER_KIND).toBeUndefined()
@@ -138,6 +206,10 @@ describe('providerRuntimeEnv', () => {
     expect(env.CC_HAHA_IMAGE_BASE_URL).toBeUndefined()
     expect(env.CC_HAHA_IMAGE_API_KEY).toBeUndefined()
     expect(env.CC_HAHA_IMAGE_MODEL).toBeUndefined()
+    expect(env.CC_HAHA_IMAGE_READ_PROVIDER_ID).toBeUndefined()
+    expect(env.CC_HAHA_IMAGE_READ_BASE_URL).toBeUndefined()
+    expect(env.CC_HAHA_IMAGE_READ_API_KEY).toBeUndefined()
+    expect(env.CC_HAHA_IMAGE_READ_MODEL).toBeUndefined()
   })
 
   test('keeps Claude Code effort capabilities for an unlisted custom model', async () => {
