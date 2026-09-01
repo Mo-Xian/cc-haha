@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs'
-import { replaceImageBlocksWithText } from './imageRecognition.js'
+import {
+  replaceImageBlocksWithText,
+  shouldRewriteImagesForMainModel,
+} from './imageRecognition.js'
 
 let savedEnv: NodeJS.ProcessEnv
 
@@ -22,7 +25,11 @@ beforeEach(() => {
   delete process.env.IMAGE_READ_API_KEY
   delete process.env.IMAGE_READ_BASE_URL
   delete process.env.IMAGE_READ_MODEL
+  delete process.env.IMAGE_READ_TEXT_ONLY
   delete process.env.OPENAI_API_KEY
+  // A visual / unknown main model by default (so image blocks are kept unless
+  // the test explicitly simulates a non-visual model or override).
+  delete process.env.ANTHROPIC_MODEL
 })
 
 afterEach(() => {
@@ -78,6 +85,50 @@ describe('replaceImageBlocksWithText', () => {
       expect((out[0] as { text: string }).text).toContain('could not be auto-described')
     } finally {
       globalThis.fetch = originalFetch
+    }
+  })
+
+  test('rewrites image blocks even without recognition when a non-visual model', async () => {
+    process.env.ANTHROPIC_MODEL = 'deepseek-v4-flash-0731'
+    // recognition NOT configured
+    const out = await replaceImageBlocksWithText([pngBlock(), { type: 'text', text: 'keep' }])
+    expect(out).toHaveLength(2)
+    expect(out[0]).toMatchObject({ type: 'text' })
+    expect((out[0] as { text: string }).text).toContain('could not be auto-described')
+    expect(out[1]).toMatchObject({ type: 'text', text: 'keep' })
+  })
+
+  test('keeps image blocks for a non-visual model when forced rewrite is false', async () => {
+    // recognition not configured and we explicitly do NOT rewrite
+    process.env.ANTHROPIC_MODEL = 'deepseek-v4-flash-0731'
+    const blocks: ContentBlockParam[] = [pngBlock()]
+    const out = await replaceImageBlocksWithText(blocks, false)
+    expect(out).toEqual(blocks)
+  })
+})
+
+describe('shouldRewriteImagesForMainModel', () => {
+  test('returns true for known non-visual model families', () => {
+    expect(shouldRewriteImagesForMainModel('deepseek-v4-flash-0731')).toBe(true)
+    expect(shouldRewriteImagesForMainModel('deepseek-chat')).toBe(true)
+    expect(shouldRewriteImagesForMainModel('kimi-k3.5')).toBe(true)
+  })
+
+  test('returns false for unknown / visual models and empty ids', () => {
+    expect(shouldRewriteImagesForMainModel('gpt-4o')).toBe(false)
+    expect(shouldRewriteImagesForMainModel('claude-opus-4-8')).toBe(false)
+    expect(shouldRewriteImagesForMainModel('')).toBe(false)
+  })
+
+  test('honors IMAGE_READ_TEXT_ONLY override regardless of model', () => {
+    const original = process.env.IMAGE_READ_TEXT_ONLY
+    delete process.env.IMAGE_READ_TEXT_ONLY
+    try {
+      process.env.IMAGE_READ_TEXT_ONLY = '1'
+      expect(shouldRewriteImagesForMainModel('gpt-4o')).toBe(true)
+    } finally {
+      if (original === undefined) delete process.env.IMAGE_READ_TEXT_ONLY
+      else process.env.IMAGE_READ_TEXT_ONLY = original
     }
   })
 })

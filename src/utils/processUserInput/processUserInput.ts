@@ -575,17 +575,27 @@ async function processUserInputBase(
   }
 
   // Regular user prompt
-  // If image recognition is configured (IMAGE_READ_*), rewrite pasted image
-  // blocks into textual descriptions so a non-visual main model (e.g.
-  // DeepSeek) can understand the images. Falls back to the original image
-  // blocks when not configured.
+  // Rewrite image blocks into textual descriptions so a non-visual main model
+  // (e.g. DeepSeek) can understand the images. When recognition is configured
+  // this produces meaningful descriptions; when it isn't but the active main
+  // model is itself non-visual, image blocks are still downgraded to a
+  // placeholder instead of being sent to a text-only gateway that would reject
+  // them with HTTP 400. Vision-capable main models keep receiving real images.
   const recognitionBlocks =
     imageContentBlocks.length > 0
       ? await replaceImageBlocksWithText(imageContentBlocks)
       : imageContentBlocks
+  // The array-input path (SDK/VS Code/desktop) carries its own image content
+  // blocks inside `normalizedInput` — those bypass `imageContentBlocks`, so
+  // they must be downgraded here too or a real image would reach the main model
+  // undowngraded and be rejected by a text-only gateway.
+  const promptInput =
+    Array.isArray(normalizedInput) && normalizedInput.length > 0
+      ? await replaceImageBlocksWithText(normalizedInput)
+      : normalizedInput
   return addImageMetadataMessage(
     processTextPrompt(
-      normalizedInput,
+      promptInput,
       recognitionBlocks,
       imagePasteIds,
       attachmentMessages,

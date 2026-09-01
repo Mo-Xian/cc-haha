@@ -284,7 +284,7 @@ async function handleOpenaiChat(
   const transformed = anthropicToOpenaiChat(body, {
     roundTripReasoningContent: deepSeekCompatible,
     passThinkingToggle: deepSeekCompatible,
-    imageContentMode: shouldUseTextOnlyOpenAIChatContent(baseUrl) ? 'text_only' : 'vision',
+    imageContentMode: shouldUseTextOnlyOpenAIChatContent(baseUrl, body.model) ? 'text_only' : 'vision',
   })
   // If the configured base URL already points at the concrete chat endpoint
   // (e.g. https://host/openai/chat/completions on a flat-mount gateway), use it
@@ -444,8 +444,36 @@ function shouldUseDeepSeekReasoningCompat(baseUrl: string): boolean {
   )
 }
 
-function shouldUseTextOnlyOpenAIChatContent(baseUrl: string): boolean {
-  return shouldUseDeepSeekReasoningCompat(baseUrl)
+/**
+ * Known non-visual (text-only) reasoning model families. Mirrors the CLI rewrite
+ * path (src/utils/imageRecognition.ts) so the proxy downgrades image blocks to
+ * text for these main models even when a text-only gateway is fronted by a base
+ * URL that doesn't name the family — otherwise the gateway rejects the request
+ * with HTTP 400.
+ */
+function isTextOnlyModelId(modelId?: string): boolean {
+  const normalized = (modelId ?? '').trim().toLowerCase()
+  if (!normalized) return false
+  return (
+    normalized.startsWith('deepseek-v4') ||
+    normalized === 'deepseek-chat' ||
+    normalized === 'deepseek-reasoner' ||
+    normalized === 'k3' ||
+    normalized.startsWith('k3-') ||
+    normalized.startsWith('kimi-k3') ||
+    normalized.startsWith('kimi-for-coding') ||
+    normalized.startsWith('kimi-k2.')
+  )
+}
+
+function shouldUseTextOnlyOpenAIChatContent(
+  baseUrl: string,
+  modelId?: string,
+): boolean {
+  // A text-only gateway (e.g. deepseek) can't accept image blocks; a known
+  // non-visual model id implies the same, regardless of the gateway domain, so
+  // images are downgraded to text instead of being rejected with HTTP 400.
+  return shouldUseDeepSeekReasoningCompat(baseUrl) || isTextOnlyModelId(modelId)
 }
 
 async function handleOpenaiResponses(
