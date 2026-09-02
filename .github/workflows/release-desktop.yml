@@ -163,23 +163,26 @@ jobs:
             }
           ]'
 
-          TARGETS="${{ github.event_name == 'workflow_dispatch' && inputs.target_platforms || '' }}"
-          if [ -n "$TARGETS" ]; then
-            # Filter to the requested labels; fail on any unknown platform name.
-            # Note: use gsub-based trim (jq-1.5 compatible) — the runner's jq has no trim/0.
-            FILTERED=$(jq -c --arg targets "$TARGETS" '
-              [ .[] | select((($targets / ",") | map(gsub("^[ \t]+";"") | gsub("[ \t]+$";"")) | map(select(length > 0))) | index(.label)) ]
-            ' <<< "$MATRIX_JSON")
-            UNKNOWN=$(jq -c --arg targets "$TARGETS" '
-              (($targets / ",") | map(gsub("^[ \t]+";"") | gsub("[ \t]+$";"")) | map(select(length > 0))) - [ .[].label ]
-            ' <<< "$MATRIX_JSON")
-            if [ "$UNKNOWN" != "[]" ]; then
-              echo "::error::Unknown target_platforms: $UNKNOWN"
-              exit 1
-            fi
-          else
-            FILTERED=$(jq -c . <<< "$MATRIX_JSON")
-          fi
+          # Use node (always present on GitHub runners) instead of jq: the
+          # bundled jq on runners has an inconsistent builtin set (e.g. no
+          # trim/0) and version-dependent semantics, which made the previous
+          # filter expressions fail to compile. Node's JSON handling is exact.
+          FILTERED=$(node -e '
+            const matrix = JSON.parse(process.argv[1]);
+            const targets = (process.argv[2] || "").split(",")
+              .map(s => s.trim()).filter(Boolean);
+            if (targets.length === 0) {
+              process.stdout.write(JSON.stringify(matrix));
+              process.exit(0);
+            }
+            const labels = new Set(matrix.map(m => m.label));
+            const unknown = targets.filter(t => !labels.has(t));
+            if (unknown.length > 0) {
+              process.stderr.write("Unknown target_platforms: " + JSON.stringify(unknown) + "\n");
+              process.exit(2);
+            }
+            process.stdout.write(JSON.stringify(matrix.filter(m => targets.includes(m.label))));
+          ' "$MATRIX_JSON" "$TARGETS")
           echo "matrix=$FILTERED" >> "$GITHUB_OUTPUT"
 
   build:
