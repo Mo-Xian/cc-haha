@@ -38,6 +38,53 @@ const providerService = new ProviderService()
 
 type ProxyFetchOptions = ReturnType<typeof getProxyFetchOptions>
 type UpstreamRequestInit = RequestInit & ProxyFetchOptions
+
+// Host allowlist that skips TLS certificate verification for the upstream
+// request. Useful for internal gateways that use a self-signed / private-CA
+// certificate you cannot (yet) install into the system trust store. Set
+// CC_HAHA_INSECURE_TLS_HOSTS to a comma-separated list of hostnames (e.g.
+// "aitools.chempartner.com,api.internal.example"). Only matching hosts are
+// affected; every other connection keeps full certificate verification.
+//
+// The default trusts the company gateway aitools.chempartner.com, which serves
+// a private-CA certificate not installed in the system store. Setting
+// CC_HAHA_INSECURE_TLS_HOSTS fully overrides the default — e.g. set it to a
+// different list, or an empty/whitespace value to re-enable strict
+// verification on all hosts.
+const DEFAULT_INSECURE_TLS_HOSTS = 'aitools.chempartner.com'
+
+function parseInsecureTlsHosts(): ReadonlySet<string> {
+  const raw = process.env.CC_HAHA_INSECURE_TLS_HOSTS ?? DEFAULT_INSECURE_TLS_HOSTS
+  return new Set(
+    raw
+      .split(',')
+      .map(s => s.trim().toLowerCase())
+      .filter(Boolean),
+  )
+}
+
+function shouldSkipTlsVerification(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase()
+    return parseInsecureTlsHosts().has(hostname)
+  } catch {
+    return false
+  }
+}
+
+// Lazily require undici so the ~1.5MB dependency isn't loaded unless an
+// insecure-TLS host is actually configured (mirrors proxy.ts's lazy require).
+let insecureAgent: unknown
+function getInsecureTlsAgent(): unknown {
+  if (!insecureAgent) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const undici = require('undici') as typeof import('undici')
+    insecureAgent = new undici.Agent({
+      connect: { rejectUnauthorized: false },
+    })
+  }
+  return insecureAgent
+}
 type ProxyTraceContext = {
   sessionId: string
   provider: TraceProviderInfo
@@ -98,9 +145,17 @@ async function fetchUpstreamWithTimeout(
   timeoutMs: number,
   isStream: boolean,
 ): Promise<Response> {
+  // Host-scoped TLS bypass: only when the target host is allowlisted AND no
+  // proxy dispatcher is already in play (injecting a dispatcher would clobber
+  // the proxy tunnel). Otherwise the normal TLS/proxy options are untouched.
+  const baseFetchOptions =
+    shouldSkipTlsVerification(url) && !('dispatcher' in init)
+      ? { ...init, dispatcher: getInsecureTlsAgent() } as UpstreamRequestInit
+      : init
+
   if (!isStream) {
     return fetch(url, {
-      ...init,
+      ...baseFetchOptions,
       signal: AbortSignal.timeout(timeoutMs),
     })
   }
@@ -110,7 +165,7 @@ async function fetchUpstreamWithTimeout(
   const timeout = createTimeoutController(timeoutMs)
   try {
     return await fetch(url, {
-      ...init,
+      ...baseFetchOptions,
       signal: timeout.signal,
     })
   } finally {
