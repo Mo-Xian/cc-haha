@@ -167,17 +167,10 @@ jobs:
           if [ -n "$TARGETS" ]; then
             # Filter to the requested labels; fail on any unknown platform name.
             FILTERED=$(jq -c --arg targets "$TARGETS" '
-              [
-                .[] as $m
-                | (($targets | split(",") | map(. | gsub("^[ \t]+|[ \t]+$"; "")) | map(select(length > 0))) as $wanted)
-                | select($wanted | index($m.label))
-              ]
+              [ .[] | select((($targets / ",") | map(trim) | map(select(length > 0))) | index(.label)) ]
             ' <<< "$MATRIX_JSON")
-            echo "$FILTERED" > /dev/null
-            UNKNOWN=$(jq -c --arg targets "$TARGETS" --argjson all "$MATRIX_JSON" '
-              (($targets | split(",") | map(. | gsub("^[ \t]+|[ \t]+$"; "")) | map(select(length > 0))) as $wanted)
-              | (($all | [.[].label]) as $known)
-              | [$wanted[] | select(([$known[]] | index(.)) == null)]
+            UNKNOWN=$(jq -c --arg targets "$TARGETS" '
+              (($targets / ",") | map(trim) | map(select(length > 0))) - [ .[].label ]
             ' <<< "$MATRIX_JSON")
             if [ "$UNKNOWN" != "[]" ]; then
               echo "::error::Unknown target_platforms: $UNKNOWN"
