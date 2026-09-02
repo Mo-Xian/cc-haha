@@ -534,16 +534,34 @@ function getInsecureTlsAgent(): undici.Agent {
 }
 
 /**
- * Get a fetch `dispatcher` that skips TLS certificate verification, but only
- * when the target URL's host is allowlisted AND no proxy dispatcher is already
- * in play (injecting one would clobber the proxy tunnel). Returns undefined so
+ * Fetch options that skip TLS certificate verification for an allowlisted host.
+ *
+ * Bun and Node use different mechanisms: Bun's fetch reads the `tls` option
+ * (`{ rejectUnauthorized: false }`), while Node/undici needs a `dispatcher`.
+ * Returns undefined so callers can spread it safely.
+ */
+export type InsecureTlsFetchOptions =
+  | { dispatcher: undici.Dispatcher }
+  | { tls: { rejectUnauthorized: false } }
+
+function insecureTlsFetchOptions(): InsecureTlsFetchOptions {
+  if (typeof Bun !== 'undefined') {
+    return { tls: { rejectUnauthorized: false } }
+  }
+  return { dispatcher: getInsecureTlsAgent() }
+}
+
+/**
+ * Get fetch options that skip TLS certificate verification, but only when the
+ * target URL's host is allowlisted AND no proxy dispatcher is already in play
+ * (injecting a dispatcher would clobber the proxy tunnel). Returns undefined so
  * callers can spread it safely.
  */
 export function getInsecureTlsDispatcher(
   targetUrl: string | URL | undefined | null,
-  existingInit: { dispatcher?: unknown } = {},
-): { dispatcher: undici.Dispatcher } | undefined {
+  existingInit: { dispatcher?: unknown; tls?: unknown } = {},
+): InsecureTlsFetchOptions | undefined {
   if ('dispatcher' in existingInit && existingInit.dispatcher) return undefined
   if (!shouldSkipTlsVerification(targetUrl)) return undefined
-  return { dispatcher: getInsecureTlsAgent() }
+  return insecureTlsFetchOptions()
 }
