@@ -20,6 +20,11 @@ on:
         required: false
         default: false
         type: boolean
+      target_platforms:
+        description: 'Comma-separated matrix labels to build (e.g. "Windows-x64"); empty builds all platforms'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   actions: read
@@ -92,55 +97,105 @@ jobs:
             echo "windows_signed=true" >> "$GITHUB_OUTPUT"
           fi
 
+  resolve-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.generate.outputs.matrix }}
+    steps:
+      - name: Generate build matrix from target_platforms
+        id: generate
+        shell: bash
+        run: |
+          MATRIX_JSON='[
+            {
+              "platform": "macos-latest",
+              "target_triple": "aarch64-apple-darwin",
+              "builder_args": "--mac dmg zip --arm64",
+              "app_bundle_dir": "mac-arm64",
+              "label": "macOS-ARM64",
+              "smoke_platform": "macos",
+              "arch": "arm64"
+            },
+            {
+              "platform": "macos-latest",
+              "target_triple": "x86_64-apple-darwin",
+              "builder_args": "--mac dmg zip --x64",
+              "app_bundle_dir": "mac",
+              "label": "macOS-x64",
+              "smoke_platform": "macos",
+              "arch": "x64"
+            },
+            {
+              "platform": "ubuntu-22.04",
+              "target_triple": "x86_64-unknown-linux-gnu",
+              "builder_args": "--linux AppImage deb rpm --x64",
+              "label": "Linux-x64",
+              "smoke_platform": "linux",
+              "arch": "x64"
+            },
+            {
+              "platform": "ubuntu-22.04-arm",
+              "target_triple": "aarch64-unknown-linux-gnu",
+              "builder_args": "--linux AppImage deb rpm --arm64",
+              "label": "Linux-ARM64",
+              "smoke_platform": "linux",
+              "arch": "arm64"
+            },
+            {
+              "platform": "windows-latest",
+              "target_triple": "x86_64-pc-windows-msvc",
+              "builder_args": "--win nsis --x64",
+              "builder_arch_arg": "--x64",
+              "unpacked_dir": "win-unpacked",
+              "label": "Windows-x64",
+              "smoke_platform": "windows",
+              "arch": "x64"
+            },
+            {
+              "platform": "windows-latest",
+              "target_triple": "aarch64-pc-windows-msvc",
+              "builder_args": "--win nsis --arm64",
+              "builder_arch_arg": "--arm64",
+              "unpacked_dir": "win-arm64-unpacked",
+              "label": "Windows-ARM64",
+              "smoke_platform": "windows",
+              "arch": "arm64"
+            }
+          ]'
+
+          TARGETS="${{ github.event_name == 'workflow_dispatch' && inputs.target_platforms || '' }}"
+          if [ -n "$TARGETS" ]; then
+            # Filter to the requested labels; fail on any unknown platform name.
+            FILTERED=$(jq -c --arg targets "$TARGETS" '
+              [
+                .[] as $m
+                | (($targets | split(",") | map(. | gsub("^[ \t]+|[ \t]+$"; "")) | map(select(length > 0))) as $wanted)
+                | select($wanted | index($m.label))
+              ]
+            ' <<< "$MATRIX_JSON")
+            echo "$FILTERED" > /dev/null
+            UNKNOWN=$(jq -c --arg targets "$TARGETS" --argjson all "$MATRIX_JSON" '
+              (($targets | split(",") | map(. | gsub("^[ \t]+|[ \t]+$"; "")) | map(select(length > 0))) as $wanted)
+              | (($all | [.[].label]) as $known)
+              | [$wanted[] | select(([$known[]] | index(.)) == null)]
+            ' <<< "$MATRIX_JSON")
+            if [ "$UNKNOWN" != "[]" ]; then
+              echo "::error::Unknown target_platforms: $UNKNOWN"
+              exit 1
+            fi
+          else
+            FILTERED=$(jq -c . <<< "$MATRIX_JSON")
+          fi
+          echo "matrix=$FILTERED" >> "$GITHUB_OUTPUT"
+
   build:
     needs:
       - signing-preflight
+      - resolve-matrix
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - platform: macos-latest
-            target_triple: aarch64-apple-darwin
-            builder_args: --mac dmg zip --arm64
-            app_bundle_dir: mac-arm64
-            label: macOS-ARM64
-            smoke_platform: macos
-            arch: arm64
-          - platform: macos-latest
-            target_triple: x86_64-apple-darwin
-            builder_args: --mac dmg zip --x64
-            app_bundle_dir: mac
-            label: macOS-x64
-            smoke_platform: macos
-            arch: x64
-          - platform: ubuntu-22.04
-            target_triple: x86_64-unknown-linux-gnu
-            builder_args: --linux AppImage deb rpm --x64
-            label: Linux-x64
-            smoke_platform: linux
-            arch: x64
-          - platform: ubuntu-22.04-arm
-            target_triple: aarch64-unknown-linux-gnu
-            builder_args: --linux AppImage deb rpm --arm64
-            label: Linux-ARM64
-            smoke_platform: linux
-            arch: arm64
-          - platform: windows-latest
-            target_triple: x86_64-pc-windows-msvc
-            builder_args: --win nsis --x64
-            builder_arch_arg: --x64
-            unpacked_dir: win-unpacked
-            label: Windows-x64
-            smoke_platform: windows
-            arch: x64
-          - platform: windows-latest
-            target_triple: aarch64-pc-windows-msvc
-            builder_args: --win nsis --arm64
-            builder_arch_arg: --arm64
-            unpacked_dir: win-arm64-unpacked
-            label: Windows-ARM64
-            smoke_platform: windows
-            arch: arm64
+        include: ${{ fromJSON(needs.resolve-matrix.outputs.matrix) }}
 
     runs-on: ${{ matrix.platform }}
     name: Build (${{ matrix.label }})
