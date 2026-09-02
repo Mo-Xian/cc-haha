@@ -350,7 +350,12 @@ export function getProxyFetchOptions(opts?: { forAnthropicAPI?: boolean; proxyUr
     : getProxyUrl()
 
   if (proxyUrl && shouldBypassProxyForTarget(opts?.targetUrl, opts?.noProxy)) {
-    return { ...base, ...getTLSFetchOptions() }
+    const tlsOptions = getTLSFetchOptions()
+    return {
+      ...base,
+      ...tlsOptions,
+      ...getInsecureTlsDispatcher(opts?.targetUrl ?? undefined, tlsOptions),
+    }
   }
 
   // If we have a proxy, use the proxy agent (which includes mTLS config)
@@ -361,8 +366,14 @@ export function getProxyFetchOptions(opts?: { forAnthropicAPI?: boolean; proxyUr
     return { ...base, dispatcher: getProxyAgent(proxyUrl) }
   }
 
-  // Otherwise, use TLS options directly if available
-  return { ...base, ...getTLSFetchOptions() }
+  // Otherwise, use TLS options directly if available, plus the host-scoped
+  // insecure-TLS dispatcher for allowlisted gateways.
+  const tlsOptions = getTLSFetchOptions()
+  return {
+    ...base,
+    ...tlsOptions,
+    ...getInsecureTlsDispatcher(opts?.targetUrl ?? undefined, tlsOptions),
+  }
 }
 
 /**
@@ -470,4 +481,69 @@ export async function getAWSClientProxyConfig(): Promise<object> {
 export function clearProxyCache(): void {
   getProxyAgent.cache.clear?.()
   logForDebugging('Cleared proxy agent cache')
+}
+
+// Host allowlist that skips TLS certificate verification. Useful for internal
+// gateways that serve a self-signed / private-CA certificate not installed in
+// the system trust store. The default trusts the company gateway
+// aitools.chempartner.com. Setting CC_HAHA_INSECURE_TLS_HOSTS overrides the
+// default list; an empty/whitespace value re-enables strict verification on
+// all hosts. Only matching hosts are affected — every other connection keeps
+// full certificate verification.
+const DEFAULT_INSECURE_TLS_HOSTS = 'aitools.chempartner.com'
+
+function insecureTlsHosts(): ReadonlySet<string> {
+  const raw = process.env.CC_HAHA_INSECURE_TLS_HOSTS ?? DEFAULT_INSECURE_TLS_HOSTS
+  return new Set(
+    raw
+      .split(',')
+      .map(s => s.trim().toLowerCase())
+      .filter(Boolean),
+  )
+}
+
+/**
+ * Whether the given URL's host is allowlisted to skip TLS certificate
+ * verification. Asserts the URL is parseable and intentionally returns false on
+ * any parse failure so a malformed URL never silently disables verification.
+ */
+export function shouldSkipTlsVerification(
+  url: string | URL | undefined | null,
+): boolean {
+  if (url == null) return false
+  try {
+    const hostname = new URL(String(url)).hostname.toLowerCase()
+    return insecureTlsHosts().has(hostname)
+  } catch {
+    return false
+  }
+}
+
+// Lazily require undici so the ~1.5MB dependency isn't loaded unless an
+// insecure-TLS host is actually configured.
+let insecureTlsAgent: undefined | undici.Agent
+function getInsecureTlsAgent(): undici.Agent {
+  if (!insecureTlsAgent) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const undiciMod = require('undici') as typeof undici
+    insecureTlsAgent = new undiciMod.Agent({
+      connect: { rejectUnauthorized: false },
+    })
+  }
+  return insecureTlsAgent
+}
+
+/**
+ * Get a fetch `dispatcher` that skips TLS certificate verification, but only
+ * when the target URL's host is allowlisted AND no proxy dispatcher is already
+ * in play (injecting one would clobber the proxy tunnel). Returns undefined so
+ * callers can spread it safely.
+ */
+export function getInsecureTlsDispatcher(
+  targetUrl: string | URL | undefined | null,
+  existingInit: { dispatcher?: unknown } = {},
+): { dispatcher: undici.Dispatcher } | undefined {
+  if ('dispatcher' in existingInit && existingInit.dispatcher) return undefined
+  if (!shouldSkipTlsVerification(targetUrl)) return undefined
+  return { dispatcher: getInsecureTlsAgent() }
 }

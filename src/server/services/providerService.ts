@@ -48,6 +48,7 @@ import {
   loadNetworkSettings,
   type NetworkSettings,
 } from './networkSettings.js'
+import { getInsecureTlsDispatcher } from '../../utils/proxy.js'
 import { normalizeModelStringForAPI } from '../../utils/model/model.js'
 import type {
   SavedProvider,
@@ -692,6 +693,7 @@ export class ProviderService {
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(networkSettings.aiRequestTimeoutMs),
         ...proxyOptions,
+        ...getInsecureTlsDispatcher(url, proxyOptions),
       })
 
       const latencyMs = Date.now() - start
@@ -757,6 +759,7 @@ export class ProviderService {
         body: JSON.stringify(transformedBody),
         signal: AbortSignal.timeout(networkSettings.aiRequestTimeoutMs),
         ...proxyOptions,
+        ...getInsecureTlsDispatcher(upstreamUrl, proxyOptions),
       })
 
       if (!response.ok) {
