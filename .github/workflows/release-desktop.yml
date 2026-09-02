@@ -167,6 +167,7 @@ jobs:
           # bundled jq on runners has an inconsistent builtin set (e.g. no
           # trim/0) and version-dependent semantics, which made the previous
           # filter expressions fail to compile. Node's JSON handling is exact.
+          TARGETS="${{ github.event_name == 'workflow_dispatch' && inputs.target_platforms || '' }}"
           FILTERED=$(node -e '
             const matrix = JSON.parse(process.argv[1]);
             const targets = (process.argv[2] || "").split(",")
